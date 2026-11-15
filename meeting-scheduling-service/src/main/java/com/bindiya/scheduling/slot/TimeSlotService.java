@@ -1,6 +1,7 @@
 package com.bindiya.scheduling.slot;
 
 import com.bindiya.scheduling.calendar.Calendar;
+import com.bindiya.scheduling.slot.dto.PageResponse;
 import com.bindiya.scheduling.calendar.CalendarRepository;
 import com.bindiya.scheduling.exception.ResourceNotFoundException;
 import com.bindiya.scheduling.exception.SchedulingConflictException;
@@ -8,8 +9,12 @@ import com.bindiya.scheduling.meeting.MeetingRepository;
 import com.bindiya.scheduling.slot.dto.AvailabilityResponse;
 import com.bindiya.scheduling.slot.dto.AvailabilityResponse.Interval;
 import com.bindiya.scheduling.slot.dto.TimeSlotResponse;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Duration;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -23,6 +28,9 @@ public class TimeSlotService {
     private final CalendarRepository calendarRepository;
     private final TimeSlotRepository slotRepository;
     private final MeetingRepository meetingRepository;
+
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final Duration MAX_QUERY_RANGE = Duration.ofDays(31);
 
     public TimeSlotService(
             CalendarRepository calendarRepository,
@@ -87,21 +95,48 @@ public class TimeSlotService {
         slotRepository.delete(slot);
     }
 
-    public List<TimeSlotResponse> list(
+    public PageResponse<TimeSlotResponse> list(
             Long userId,
             Instant from,
             Instant to,
-            SlotStatus status
+            SlotStatus status,
+            int page,
+            int size
     ) {
-        validateRange(from, to);
+        validateQueryRange(from, to);
+
+        if (page < 0) {
+            throw new IllegalArgumentException(
+                    "Page must be zero or greater"
+            );
+        }
+
+        if (size < 1 || size > MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException(
+                    "Size must be between 1 and " + MAX_PAGE_SIZE
+            );
+        }
 
         Calendar calendar = findCalendar(userId);
 
-        return slotRepository.findOverlapping(calendar.getId(), from, to)
-                .stream()
-                .filter(slot -> status == null || slot.getStatus() == status)
-                .map(TimeSlotResponse::from)
-                .toList();
+        PageRequest pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(
+                        Sort.Order.asc("startTime"),
+                        Sort.Order.asc("id")
+                )
+        );
+
+        return PageResponse.from(
+                slotRepository.findPageOverlapping(
+                        calendar.getId(),
+                        from,
+                        to,
+                        status,
+                        pageable
+                ).map(TimeSlotResponse::from)
+        );
     }
 
     public AvailabilityResponse availability(
@@ -110,7 +145,7 @@ public class TimeSlotService {
             Instant to,
             SlotStatus status
     ) {
-        validateRange(from, to);
+        validateQueryRange(from, to);
 
         Calendar calendar = findCalendar(userId);
         List<Interval> merged = new ArrayList<>();
@@ -118,7 +153,7 @@ public class TimeSlotService {
         for (TimeSlot slot :
                 slotRepository.findOverlapping(calendar.getId(), from, to)) {
 
-            // Clip each interval to the requested query range.
+
             Instant start = slot.getStartTime().isBefore(from)
                     ? from : slot.getStartTime();
 
@@ -208,6 +243,15 @@ public class TimeSlotService {
         }
     }
 
+    private void validateQueryRange(Instant from, Instant to) {
+        validateRange(from, to);
+
+        if (Duration.between(from, to).compareTo(MAX_QUERY_RANGE) > 0) {
+            throw new IllegalArgumentException(
+                    "Requested time range must not exceed 31 days"
+            );
+        }
+    }
     private void validateRange(Instant startTime, Instant endTime) {
         if (startTime == null || endTime == null) {
             throw new IllegalArgumentException(

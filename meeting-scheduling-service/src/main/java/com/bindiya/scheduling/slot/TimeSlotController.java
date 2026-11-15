@@ -7,10 +7,10 @@ import com.bindiya.scheduling.slot.dto.UpdateTimeSlotRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.bindiya.scheduling.slot.dto.PageResponse;
 
 import java.net.URI;
 import java.time.Instant;
-import java.util.List;
 
 @RestController
 @RequestMapping("/users/{userId}")
@@ -65,13 +65,22 @@ public class TimeSlotController {
     }
 
     @GetMapping("/slots")
-    public List<TimeSlotResponse> list(
+    public PageResponse<TimeSlotResponse> list(
             @PathVariable("userId") Long userId,
             @RequestParam("from") Instant from,
             @RequestParam("to") Instant to,
-            @RequestParam(value = "status", required = false) SlotStatus status
+            @RequestParam(value = "status", required = false) SlotStatus status,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size
     ) {
-        return slotService.list(userId, from, to, status);
+        return slotService.list(
+                userId,
+                from,
+                to,
+                status,
+                page,
+                size
+        );
     }
 
     @GetMapping("/availability")
