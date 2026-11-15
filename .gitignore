@@ -31,3 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Local files and nested backup
+.DS_Store
+/meeting-scheduling-service/

@@ -76,6 +76,15 @@ The `userId` identifies the owner of the slots being managed or booked.
 
 Both GET endpoints require `from` and `to`. An optional `status` parameter accepts `FREE` or `BUSY`.
 
+Slot listing also accepts `page` (default `0`) and `size`
+(default `20`, maximum `100`). Pages are zero-based.
+Results are sorted by start time, then slot ID.
+Status filtering is applied before pagination.
+
+Both GET endpoints limit the requested time range to 31 days.
+Aggregated availability is not paginated.
+Invalid pagination or time ranges return `400 Bad Request`.
+
 ## Example workflow
 
 ### 1. Create a slot
@@ -94,8 +103,22 @@ Expected: `201 Created`. Use the returned slot ID in subsequent requests.
 ### 2. List available slots
 
 ```bash
-curl 'http://localhost:8080/users/1/slots?from=2030-11-20T00:00:00Z&to=2030-11-21T00:00:00Z&status=FREE'
+curl 'http://localhost:8080/users/1/slots?from=2030-11-20T00:00:00Z&to=2030-11-21T00:00:00Z&status=FREE&page=0&size=20'
 ```
+
+Slots are returned inside `content`, alongside pagination metadata:
+
+```json
+{
+  "content": [],
+  "page": 0,
+  "size": 20,
+  "totalElements": 0,
+  "totalPages": 0
+}
+```
+
+This example represents an empty result.
 
 ### 3. Book a meeting
 
@@ -182,7 +205,10 @@ Errors use Spring's Problem Detail response format.
 ## Tests
 
 Running tests locally requires Java 21 and Docker. Maven is provided through the wrapper.
-
+- Pagination with status filtering and chronological ordering
+- Rejection of invalid page sizes and negative page numbers
+- Enforcement of the 31-day query limit
+- 
 ```bash
 ./mvnw clean verify
 ```
@@ -198,10 +224,11 @@ Integration tests cover:
 - Invalid input and unknown users
 - Concurrent bookings: one success and one conflict
 
-## Health and metrics
+## Health check
 
 ```text
 GET /actuator/health
 ```
 
-Actuator is included for health checks and metrics support. Additional management endpoints are not exposed by this setup.
+Returns the application’s health status, including database connectivity.
+Only the health endpoint is exposed over HTTP.

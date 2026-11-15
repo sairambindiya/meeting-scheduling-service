@@ -349,4 +349,82 @@ class SchedulingApiIntegrationTests {
                 HttpResponse.BodyHandlers.ofString()
         );
     }
+
+    @Test
+    void paginatesSlotsAfterFilteringByStatus() throws Exception {
+        assertEquals(201,
+                createSlot("10:00:00", "10:30:00").statusCode());
+
+        long busySlotId = onlySlotId();
+
+        assertEquals(200, request(
+                "PUT",
+                "/users/1/slots/" + busySlotId,
+                """
+                {
+                  "startTime": "2030-11-20T10:00:00Z",
+                  "endTime": "2030-11-20T10:30:00Z",
+                  "status": "BUSY"
+                }
+                """
+        ).statusCode());
+
+        assertEquals(201,
+                createSlot("11:00:00", "11:30:00").statusCode());
+
+        assertEquals(201,
+                createSlot("12:00:00", "12:30:00").statusCode());
+
+        String path = "/users/1/slots"
+                + "?from=2030-11-20T00:00:00Z"
+                + "&to=2030-11-21T00:00:00Z"
+                + "&status=FREE&size=1";
+
+        HttpResponse<String> first = request("GET", path + "&page=0", null);
+        HttpResponse<String> second = request("GET", path + "&page=1", null);
+
+        assertEquals(200, first.statusCode());
+        assertEquals(200, second.statusCode());
+
+        assertTrue(first.body().contains("\"totalElements\":2"));
+        assertTrue(first.body().contains("\"totalPages\":2"));
+        assertTrue(first.body().contains("2030-11-20T11:00:00Z"));
+        assertFalse(first.body().contains("2030-11-20T12:00:00Z"));
+
+        assertTrue(second.body().contains("2030-11-20T12:00:00Z"));
+        assertFalse(second.body().contains("2030-11-20T11:00:00Z"));
+    }
+
+    @Test
+    void rejectsInvalidPaginationAndExcessiveQueryRanges() throws Exception {
+        String path = "/users/1/slots"
+                + "?from=2030-11-20T00:00:00Z"
+                + "&to=2030-11-21T00:00:00Z";
+
+        for (String pagination : new String[]{
+                "&page=-1", "&size=0", "&size=101"
+        }) {
+            assertEquals(400,
+                    request("GET", path + pagination, null).statusCode());
+        }
+
+        for (String endpoint : new String[]{"slots", "availability"}) {
+            assertEquals(400, request(
+                    "GET",
+                    "/users/1/" + endpoint
+                            + "?from=2030-11-01T00:00:00Z"
+                            + "&to=2030-12-03T00:00:00Z",
+                    null
+            ).statusCode());
+
+            // Exactly 31 days is allowed.
+            assertEquals(200, request(
+                    "GET",
+                    "/users/1/" + endpoint
+                            + "?from=2030-11-01T00:00:00Z"
+                            + "&to=2030-12-02T00:00:00Z",
+                    null
+            ).statusCode());
+        }
+    }
 }
