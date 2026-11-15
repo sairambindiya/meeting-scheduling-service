@@ -230,5 +230,5 @@ Integration tests cover:
 GET /actuator/health
 ```
 
-Returns the application’s health status, including database connectivity.
+Returns application health, including database connectivity.
 Only the health endpoint is exposed over HTTP.
